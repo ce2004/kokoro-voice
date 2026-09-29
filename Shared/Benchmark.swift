@@ -33,6 +33,8 @@ public struct BenchmarkReport: Sendable {
     public var compute: String
     public var baselineMB: Double
     public var peakMB: Double
+    public var afterModelsMB: Double = 0
+    public var afterWarmUpMB: Double = 0
     public var cases: [BenchmarkCase]
     public var isSimulator: Bool
 
@@ -51,6 +53,8 @@ public struct BenchmarkReport: Sendable {
                 c.name, c.firstAudio * 1000, c.total * 1000, c.audioSeconds,
                 Self.speedPhrase(c.realTimeFactor)))
         }
+        out.append(String(format: "Memory: %.0f MB after loading the Core ML models and G2P, %.0f MB after the lexicon and a first synthesis",
+                          afterModelsMB, afterWarmUpMB))
         out.append(String(format: "Peak memory: %.0f MB (%.0f MB before loading the model, so Kokoro added about %.0f MB)",
                           peakMB, baselineMB, max(0, peakMB - baselineMB)))
         return out
@@ -97,7 +101,9 @@ public enum KokoroBenchmark {
         let baseline = MemoryStats.footprint().current
         let loadStart = Date()
         try await engine.prepare(accent: voice.accent)
+        let afterModels = MemoryStats.footprint().current
         await engine.warmUp(voice: voice)
+        let afterWarm = MemoryStats.footprint().current
         let load = Date().timeIntervalSince(loadStart)
         progress(String(format: "Model loaded in %.2f s", load))
 
@@ -123,9 +129,12 @@ public enum KokoroBenchmark {
         #else
         let sim = false
         #endif
-        return BenchmarkReport(
+        var report = BenchmarkReport(
             voice: voice.displayName, loadSeconds: load, compute: await engine.computeDescription(),
             baselineMB: MemoryStats.mb(baseline), peakMB: MemoryStats.mb(MemoryStats.footprint().peak),
             cases: cases, isSimulator: sim)
+        report.afterModelsMB = MemoryStats.mb(afterModels)
+        report.afterWarmUpMB = MemoryStats.mb(afterWarm)
+        return report
     }
 }

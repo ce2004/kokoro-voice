@@ -58,7 +58,7 @@ final class AudioUnitTests: XCTestCase {
         var complete = false
         while !complete, Date().timeIntervalSince(start) < 120 {
             let r = render(unit)
-            if !r.samples.isEmpty, firstAudio == nil { firstAudio = Date().timeIntervalSince(start) }
+            if r.samples.contains(where: { $0 != 0 }), firstAudio == nil { firstAudio = Date().timeIntervalSince(start) }
             audio += r.samples
             complete = r.complete
         }
@@ -86,13 +86,17 @@ final class AudioUnitTests: XCTestCase {
 
         let t0 = Date()
         unit.cancelSpeechRequest()
+        let cancelMs = Date().timeIntervalSince(t0) * 1000
+        let t1 = Date()
         let after = render(unit)
-        let ms = Date().timeIntervalSince(t0) * 1000
-        print(String(format: "OK cancel: next render returned %d samples, complete=%@, in %.2f ms",
-                     after.samples.count, after.complete ? "yes" : "no", ms))
+        let renderMs = Date().timeIntervalSince(t1) * 1000
+        let nonZero = after.samples.filter { $0 != 0 }.count
+        print(String(format: "OK cancel: cancelSpeechRequest took %.2f ms; next render took %.2f ms, produced %d frames (%d non-zero; host saw %d bytes), complete=%@",
+                     cancelMs, renderMs, unit.lastRenderedFrames, nonZero, after.samples.count * 4, after.complete ? "yes" : "no"))
         XCTAssertTrue(after.complete, "render should report completion right after cancel")
-        XCTAssertEqual(after.samples.count, 0)
-        XCTAssertLessThan(ms, 50)
+        XCTAssertEqual(unit.lastRenderedFrames, 0)
+        XCTAssertEqual(nonZero, 0, "audio after cancel")
+        XCTAssertLessThan(cancelMs + renderMs, 50)
 
         // A new request right after a cancel works (VoiceOver does this constantly).
         unit.synthesizeSpeechRequest(request("<speak>Next item.</speak>"))

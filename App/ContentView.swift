@@ -66,6 +66,8 @@ struct ContentView: View {
                 Section("Benchmark") {
                     Button(benchmarking ? "Benchmark running…" : "Run benchmark") { runBenchmark() }
                         .disabled(benchmarking)
+                    Button("Benchmark inside the voice extension") { runExtensionBenchmark() }
+                        .disabled(benchmarking)
                     ForEach(Array(benchmarkLines.enumerated()), id: \.offset) { _, line in
                         Text(line)
                     }
@@ -118,6 +120,24 @@ struct ContentView: View {
                 speakResult(report.spokenSummary)
             } catch {
                 benchmarkLines = ["Benchmark failed: \(error.localizedDescription)"]
+                announce(benchmarkLines[0])
+            }
+            benchmarking = false
+        }
+    }
+
+    /// Same benchmark, but run by the real extension process: its memory is
+    /// what counts against the extension's limit.
+    private func runExtensionBenchmark() {
+        benchmarking = true
+        benchmarkLines = ["Starting the voice extension and running the benchmark inside it."]
+        announce("Extension benchmark started.")
+        Task {
+            do {
+                benchmarkLines = try await ExtensionProbe.benchmarkInExtension()
+                speakResult(benchmarkLines.filter { $0.contains("first audio") || $0.contains("memory") }.joined(separator: " "))
+            } catch {
+                benchmarkLines = ["Extension benchmark failed: \(error.localizedDescription)"]
                 announce(benchmarkLines[0])
             }
             benchmarking = false

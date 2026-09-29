@@ -49,7 +49,8 @@ final class SystemVoiceTests: XCTestCase {
     func testSpeakThroughSystemSynthesizer() async throws {
         let voice = VoiceCatalog.defaultVoice
         let all = AVSpeechSynthesisVoice.speechVoices()
-        guard let systemVoice = await findVoice(voice.identifier, timeout: 45) else {
+        print("INFO audio component registered: \(ExtensionProbe.component().map { "\($0.name) by \($0.manufacturerName)" } ?? "no")")
+        guard let systemVoice = await findVoice(voice.identifier, timeout: 90) else {
             let kokoro = AVSpeechSynthesisVoice.speechVoices().filter { $0.name.contains("Kokoro") }
             print("INFO system voices: \(all.count), Kokoro among them: \(kokoro.count)")
             throw XCTSkip("The simulator did not list the extension's voices after updateSpeechVoices(); end-to-end check not possible here.")
@@ -77,6 +78,28 @@ final class SystemVoiceTests: XCTestCase {
                      TestAudio.seconds(fast.samples), ratio))
         XCTAssertGreaterThan(ratio, 1.3, "the system's rate did not reach the voice")
         if let ff = fast.format { TestAudio.saveWAV(fast.samples, name: "system_synthesizer_max_rate.wav", sampleRate: Int(ff.sampleRate)) }
+    }
+}
+
+/// The real KokoroSynth.appex, loaded out of process like the system loads it.
+final class ExtensionProcessTests: XCTestCase {
+    func testExtensionOutOfProcess() async throws {
+        guard let c = ExtensionProbe.component() else {
+            throw XCTSkip("AVAudioUnitComponentManager does not list the extension's 'ausp' component in this simulator.")
+        }
+        print("OK component: \(c.name) by \(c.manufacturerName), type \(c.typeName), sandboxSafe \(c.isSandboxSafe)")
+        let unit = try await ExtensionProbe.instantiate()
+        let au = unit.auAudioUnit
+        print("OK instantiated out of process: \(type(of: au)), provider subclass: \(au is AVSpeechSynthesisProviderAudioUnit)")
+        let stats = try ExtensionProbe.call(au, ["cmd": "stats"])
+        print("OK extension process: \(stats)")
+        XCTAssertNotEqual(stats["pid"] as? Int, Int(ProcessInfo.processInfo.processIdentifier), "should be another process")
+        if let provider = au as? AVSpeechSynthesisProviderAudioUnit {
+            print("OK extension voices via proxy: \(provider.speechVoices.map(\.name))")
+        }
+        let lines = try await ExtensionProbe.benchmarkInExtension()
+        for line in lines { print("BENCH-EXT \(line)") }
+        XCTAssertTrue(lines.contains { $0.contains("first audio") }, "\(lines)")
     }
 }
 

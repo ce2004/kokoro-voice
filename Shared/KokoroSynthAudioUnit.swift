@@ -24,7 +24,9 @@ open class KokoroSynthAudioUnit: AVSpeechSynthesisProviderAudioUnit {
     /// How long one render call waits for the synthesizer before returning
     /// what it has. The render thread here is an offline pull, not a
     /// real-time I/O thread.
-    public static var renderWait: TimeInterval = 0.25
+    /// If the host's render call is not honoured partially (it may count the
+    /// whole buffer), returning early inserts silence, so wait generously.
+    public static var renderWait: TimeInterval = 1.5
 
     private let log = Logger(subsystem: "com.conner.kokorovoice", category: "audiounit")
     private var outputBus: AUAudioUnitBus
@@ -34,6 +36,8 @@ open class KokoroSynthAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 
     /// The SSML of the last request (tests log it to learn the system's format).
     public private(set) var lastSSML: String = ""
+    /// Frames the render block produced on its last call (diagnostics).
+    public private(set) var lastRenderedFrames = 0
 
     public override init(componentDescription: AudioComponentDescription, options: AudioComponentInstantiationOptions = []) throws {
         outputBus = try AUAudioUnitBus(format: Self.outputFormat)
@@ -56,7 +60,7 @@ open class KokoroSynthAudioUnit: AVSpeechSynthesisProviderAudioUnit {
     public override func synthesizeSpeechRequest(_ speechRequest: AVSpeechSynthesisProviderRequest) {
         let ssml = speechRequest.ssmlRepresentation
         let voice = VoiceCatalog.voice(forIdentifier: speechRequest.voice.identifier)
-        log.info("request voice=\(voice.packName, privacy: .public) ssml=\(ssml, privacy: .public)")
+        log.notice("request voice=\(voice.packName, privacy: .public) ssml=\(ssml, privacy: .public)")
         let newSession = KokoroSpeechSession(pieces: SpeechPlanner.plan(ssml: ssml), voice: voice)
         lock.lock()
         session?.cancel()
@@ -91,17 +95,86 @@ open class KokoroSynthAudioUnit: AVSpeechSynthesisProviderAudioUnit {
             let frames = data.assumingMemoryBound(to: Float.self)
             frames.update(repeating: 0, count: Int(frameCount))
             guard let session = self.currentSession else {
+                self.lastRenderedFrames = 0
                 buffers[0].mDataByteSize = 0
                 actionFlags.pointee = .offlineUnitRenderAction_Complete
                 return noErr
             }
             let (n, done) = session.buffer.read(into: frames, max: Int(frameCount), wait: Self.renderWait)
+            self.lastRenderedFrames = n
             buffers[0].mDataByteSize = UInt32(n * MemoryLayout<Float>.size)
             if done {
                 actionFlags.pointee = .offlineUnitRenderAction_Complete
             }
             return noErr
         }
+    }
+}
+
+extension KokoroSynthAudioUnit {
+    /// A message channel so the app (and tests) can talk to the real extension
+    /// process: ask for its memory use and run the benchmark inside it.
+    public override func messageChannel(for channelName: String) -> AUMessageChannel {
+        ExtensionChannel()
+    }
+}
+
+/// Messages: ["cmd": "stats"] -> footprint; ["cmd": "startBenchmark"] then
+/// poll ["cmd": "benchmarkResult"] -> ["lines": [String], "done": Bool].
+final class ExtensionChannel: NSObject, AUMessageChannel {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var benchLines: [String] = []
+    nonisolated(unsafe) private static var benchDone = false
+    nonisolated(unsafe) private static var benchRunning = false
+
+    var callHostBlock: CallHostBlock? {
+        get { nil }
+        set {}
+    }
+
+    func callAudioUnit(_ message: [AnyHashable: Any]) -> [AnyHashable: Any] {
+        let (current, peak) = MemoryStats.footprint()
+        var reply: [AnyHashable: Any] = [
+            "pid": Int(ProcessInfo.processInfo.processIdentifier),
+            "bundle": Bundle.main.bundleIdentifier ?? "",
+            "footprintMB": MemoryStats.mb(current),
+            "peakMB": MemoryStats.mb(peak),
+        ]
+        switch message["cmd"] as? String {
+        case "startBenchmark":
+            Self.lock.lock()
+            let start = !Self.benchRunning
+            if start {
+                Self.benchRunning = true
+                Self.benchDone = false
+                Self.benchLines = []
+            }
+            Self.lock.unlock()
+            if start {
+                Task.detached(priority: .userInitiated) {
+                    var lines: [String]
+                    do {
+                        lines = try await KokoroBenchmark.run().lines
+                    } catch {
+                        lines = ["Benchmark failed in the extension: \(error.localizedDescription)"]
+                    }
+                    Self.lock.lock()
+                    Self.benchLines = lines
+                    Self.benchDone = true
+                    Self.benchRunning = false
+                    Self.lock.unlock()
+                }
+            }
+            reply["started"] = start
+        case "benchmarkResult":
+            Self.lock.lock()
+            reply["done"] = Self.benchDone
+            reply["lines"] = Self.benchLines
+            Self.lock.unlock()
+        default:
+            break
+        }
+        return reply
     }
 }
 
