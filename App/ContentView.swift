@@ -4,7 +4,7 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
-    @State private var text = "Hello! This is Supertonic, speaking on your iPhone. It costs $4.99, and it's 3:45 PM."
+    @State private var text = "Hello! This is Piper, speaking on your iPhone. It costs $4.99, and it's 3:45 PM."
     @State private var voiceID = VoiceCatalog.defaultVoice.packName
     @State private var rate = 1.0
     @State private var status = ""
@@ -20,16 +20,16 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Turn on the Supertonic voice") {
+                Section("Turn on the Piper voice") {
                     Text("""
                         For VoiceOver: Settings, Accessibility, VoiceOver, Speech, Voice. \
-                        Choose English, then pick a voice whose name starts with Supertonic, for example Supertonic Female 1.
+                        Choose English, then pick Piper Lessac, Piper Amy, or eSpeak.
                         """)
                     Text("""
                         For Speak Selection and Speak Screen: Settings, Accessibility, Spoken Content, Voices, English, \
-                        then choose a Supertonic voice.
+                        then choose Piper Lessac, Piper Amy or eSpeak.
                         """)
-                    Text("If the Supertonic voices are missing, press this button, wait half a minute and look again.")
+                    Text("If the voices are missing, press this button, wait half a minute and look again.")
                     Button("Refresh system voices") {
                         AVSpeechSynthesisProviderVoice.updateSpeechVoices()
                         announce("Asked the system to refresh its voice list.")

@@ -16,6 +16,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_INCLUDE_PATHS: $(SRCROOT)/CSherpa
 targets:
   # Engine, SSML, DSP and the audio unit class; shared by the app, the
   # extension and the tests. Embedded once in the app's Frameworks folder.
@@ -26,8 +27,15 @@ targets:
       - path: Shared
     dependencies:
       - package: FluidAudio
+      # sherpa-onnx (Piper/VITS + eSpeak NG) and ONNX Runtime: static libraries
+      # fetched by scripts/fetch_models.py.
+      - framework: Vendor/sherpa/build-ios/sherpa-onnx.xcframework
+        embed: false
+      - framework: Vendor/sherpa/build-ios/ios-onnxruntime/1.27.0/onnxruntime.xcframework
+        embed: false
     settings:
       base:
+        OTHER_LDFLAGS: ["-lc++", "-framework", "Accelerate", "-framework", "CoreML"]
         PRODUCT_BUNDLE_IDENTIFIER: com.conner.kokorovoice.kit
         PRODUCT_NAME: KokoroKit
         GENERATE_INFOPLIST_FILE: YES

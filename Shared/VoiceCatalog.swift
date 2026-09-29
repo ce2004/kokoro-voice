@@ -6,7 +6,7 @@ import Foundation
 public struct KokoroVoice: Hashable, Sendable, Identifiable {
     public enum Accent: String, Sendable { case american, british }
 
-    /// Supertonic voice style name, e.g. `F1`.
+    /// Piper model name (`lessac`, `amy`) or `espeak`.
     public let packName: String
     /// Short human name, e.g. `Heart`.
     public let shortName: String
@@ -16,7 +16,8 @@ public struct KokoroVoice: Hashable, Sendable, Identifiable {
     public var accent: Accent { .american }
     public var language: String { accent == .british ? "en-GB" : "en-US" }
     /// The name shown in Settings > VoiceOver > Speech > Voice.
-    public var displayName: String { "Supertonic \(shortName)" }
+    public var displayName: String { isESpeak ? "eSpeak" : "Piper \(shortName)" }
+    public var isESpeak: Bool { packName == "espeak" }
     /// Stable identifier the system stores when the voice is selected.
     public var identifier: String { "com.conner.kokorovoice.\(packName)" }
 
@@ -34,17 +35,13 @@ public struct KokoroVoice: Hashable, Sendable, Identifiable {
 
 public enum VoiceCatalog {
     public static let all: [KokoroVoice] = [
-        KokoroVoice(packName: "F1", shortName: "Female 1", isFemale: true),
-        KokoroVoice(packName: "F2", shortName: "Female 2", isFemale: true),
-        KokoroVoice(packName: "F3", shortName: "Female 3", isFemale: true),
-        KokoroVoice(packName: "F4", shortName: "Female 4", isFemale: true),
-        KokoroVoice(packName: "F5", shortName: "Female 5", isFemale: true),
-        KokoroVoice(packName: "M1", shortName: "Male 1", isFemale: false),
-        KokoroVoice(packName: "M2", shortName: "Male 2", isFemale: false),
-        KokoroVoice(packName: "M3", shortName: "Male 3", isFemale: false),
-        KokoroVoice(packName: "M4", shortName: "Male 4", isFemale: false),
-        KokoroVoice(packName: "M5", shortName: "Male 5", isFemale: false),
+        KokoroVoice(packName: "lessac", shortName: "Lessac", isFemale: true),
+        KokoroVoice(packName: "amy", shortName: "Amy", isFemale: true),
+        KokoroVoice(packName: "espeak", shortName: "eSpeak", isFemale: false),
     ]
+
+    /// Piper model loaded first (and used to initialise eSpeak NG).
+    public static let defaultPiperModel = "lessac"
 
     public static let defaultVoice = all[0]
 

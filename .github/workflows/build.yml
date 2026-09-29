@@ -18,7 +18,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .model-cache
-          key: models-${{ hashFiles('scripts/models.lock', 'scripts/fetch_models.py') }}
+          key: models-${{ hashFiles('scripts/fetch_models.py') }}
 
       - name: Fetch and verify models
         run: python3 scripts/fetch_models.py
@@ -148,7 +148,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .model-cache
-          key: models-${{ hashFiles('scripts/models.lock', 'scripts/fetch_models.py') }}
+          key: models-${{ hashFiles('scripts/fetch_models.py') }}
       - name: Fetch and verify models
         run: python3 scripts/fetch_models.py
       - name: Vendor FluidAudio (pinned, patched)
