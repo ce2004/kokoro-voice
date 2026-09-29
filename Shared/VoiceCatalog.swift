@@ -6,17 +6,17 @@ import Foundation
 public struct KokoroVoice: Hashable, Sendable, Identifiable {
     public enum Accent: String, Sendable { case american, british }
 
-    /// Kokoro voice pack name, e.g. `af_heart`.
+    /// Supertonic voice style name, e.g. `F1`.
     public let packName: String
     /// Short human name, e.g. `Heart`.
     public let shortName: String
     public let isFemale: Bool
 
     public var id: String { packName }
-    public var accent: Accent { packName.hasPrefix("b") ? .british : .american }
+    public var accent: Accent { .american }
     public var language: String { accent == .british ? "en-GB" : "en-US" }
     /// The name shown in Settings > VoiceOver > Speech > Voice.
-    public var displayName: String { "Kokoro \(shortName)" }
+    public var displayName: String { "Supertonic \(shortName)" }
     /// Stable identifier the system stores when the voice is selected.
     public var identifier: String { "com.conner.kokorovoice.\(packName)" }
 
@@ -34,15 +34,16 @@ public struct KokoroVoice: Hashable, Sendable, Identifiable {
 
 public enum VoiceCatalog {
     public static let all: [KokoroVoice] = [
-        KokoroVoice(packName: "af_heart", shortName: "Heart", isFemale: true),
-        KokoroVoice(packName: "af_bella", shortName: "Bella", isFemale: true),
-        KokoroVoice(packName: "af_nicole", shortName: "Nicole", isFemale: true),
-        KokoroVoice(packName: "am_michael", shortName: "Michael", isFemale: false),
-        KokoroVoice(packName: "am_fenrir", shortName: "Fenrir", isFemale: false),
-        KokoroVoice(packName: "bf_emma", shortName: "Emma", isFemale: true),
-        KokoroVoice(packName: "bf_isabella", shortName: "Isabella", isFemale: true),
-        KokoroVoice(packName: "bm_george", shortName: "George", isFemale: false),
-        KokoroVoice(packName: "bm_fable", shortName: "Fable", isFemale: false),
+        KokoroVoice(packName: "F1", shortName: "Female 1", isFemale: true),
+        KokoroVoice(packName: "F2", shortName: "Female 2", isFemale: true),
+        KokoroVoice(packName: "F3", shortName: "Female 3", isFemale: true),
+        KokoroVoice(packName: "F4", shortName: "Female 4", isFemale: true),
+        KokoroVoice(packName: "F5", shortName: "Female 5", isFemale: true),
+        KokoroVoice(packName: "M1", shortName: "Male 1", isFemale: false),
+        KokoroVoice(packName: "M2", shortName: "Male 2", isFemale: false),
+        KokoroVoice(packName: "M3", shortName: "Male 3", isFemale: false),
+        KokoroVoice(packName: "M4", shortName: "Male 4", isFemale: false),
+        KokoroVoice(packName: "M5", shortName: "Male 5", isFemale: false),
     ]
 
     public static let defaultVoice = all[0]

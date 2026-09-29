@@ -4,7 +4,7 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
-    @State private var text = "Hello! This is Kokoro, speaking on your iPhone. It costs $4.99, and it's 3:45 PM."
+    @State private var text = "Hello! This is Supertonic, speaking on your iPhone. It costs $4.99, and it's 3:45 PM."
     @State private var voiceID = VoiceCatalog.defaultVoice.packName
     @State private var rate = 1.0
     @State private var status = ""
@@ -20,16 +20,16 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Turn on the Kokoro voice") {
+                Section("Turn on the Supertonic voice") {
                     Text("""
                         For VoiceOver: Settings, Accessibility, VoiceOver, Speech, Voice. \
-                        Choose English, then pick a voice whose name starts with Kokoro, for example Kokoro Heart.
+                        Choose English, then pick a voice whose name starts with Supertonic, for example Supertonic Female 1.
                         """)
                     Text("""
                         For Speak Selection and Speak Screen: Settings, Accessibility, Spoken Content, Voices, English, \
-                        then choose a Kokoro voice.
+                        then choose a Supertonic voice.
                         """)
-                    Text("If the Kokoro voices are missing, press this button, wait half a minute and look again.")
+                    Text("If the Supertonic voices are missing, press this button, wait half a minute and look again.")
                     Button("Refresh system voices") {
                         AVSpeechSynthesisProviderVoice.updateSpeechVoices()
                         announce("Asked the system to refresh its voice list.")
@@ -42,7 +42,7 @@ struct ContentView: View {
                         .accessibilityLabel("Text to speak")
                     Picker("Voice", selection: $voiceID) {
                         ForEach(VoiceCatalog.all) { v in
-                            Text("\(v.shortName), \(v.accent == .british ? "British" : "American") \(v.isFemale ? "female" : "male")")
+                            Text(v.displayName)
                                 .tag(v.packName)
                         }
                     }

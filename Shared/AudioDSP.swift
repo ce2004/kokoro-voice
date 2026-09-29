@@ -44,7 +44,7 @@ public enum AudioDSP {
 
     /// Waveform-similarity overlap-add time stretch. `tempo` > 1 is faster
     /// (shorter output); pitch is unchanged.
-    public static func wsola(_ x: [Float], tempo: Double, sampleRate: Int = 24_000) -> [Float] {
+    public static func wsola(_ x: [Float], tempo: Double, sampleRate: Int = KokoroEngine.sampleRate) -> [Float] {
         guard tempo > 0, abs(tempo - 1) > 0.001, x.count > 0 else { return x }
         let frame = sampleRate / 40  // 25 ms
         let hopOut = frame / 2  // 50% overlap, Hann windows sum to 1
@@ -174,14 +174,14 @@ public enum AudioDSP {
         guard let first = x.firstIndex(where: { abs($0) > threshold }),
             let last = x.lastIndex(where: { abs($0) > threshold })
         else { return x }
-        let keep = Int(keepSeconds * 24_000)
+        let keep = Int(keepSeconds * Double(KokoroEngine.sampleRate))
         let s = leading ? max(0, first - keep) : 0
         let e = trailing ? min(x.count, last + 1 + keep * 6) : x.count
         return s < e ? Array(x[s..<e]) : x
     }
 
     public static func silence(seconds: Double) -> [Float] {
-        [Float](repeating: 0, count: max(0, Int(seconds * 24_000)))
+        [Float](repeating: 0, count: max(0, Int(seconds * Double(KokoroEngine.sampleRate))))
     }
 
     public static func rms(_ x: [Float]) -> Float {
