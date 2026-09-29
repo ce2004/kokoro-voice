@@ -115,13 +115,22 @@ extension KokoroSynthAudioUnit {
     /// A message channel so the app (and tests) can talk to the real extension
     /// process: ask for its memory use and run the benchmark inside it.
     public override func messageChannel(for channelName: String) -> AUMessageChannel {
-        ExtensionChannel()
+        ExtensionChannel(unit: self)
     }
 }
 
 /// Messages: ["cmd": "stats"] -> footprint; ["cmd": "startBenchmark"] then
 /// poll ["cmd": "benchmarkResult"] -> ["lines": [String], "done": Bool].
+/// ["cmd": "speak", "ssml": String, "voice": String] and ["cmd": "cancel"] call
+/// synthesizeSpeechRequest / cancelSpeechRequest on this unit, so a host can
+/// pull the audio through the out-of-process render block, like the system.
 final class ExtensionChannel: NSObject, AUMessageChannel {
+    private weak var unit: KokoroSynthAudioUnit?
+
+    init(unit: KokoroSynthAudioUnit) {
+        self.unit = unit
+    }
+
     private static let lock = NSLock()
     nonisolated(unsafe) private static var benchLines: [String] = []
     nonisolated(unsafe) private static var benchDone = false
@@ -166,6 +175,14 @@ final class ExtensionChannel: NSObject, AUMessageChannel {
                 }
             }
             reply["started"] = start
+        case "speak":
+            let ssml = message["ssml"] as? String ?? ""
+            let voice = VoiceCatalog.voice(forIdentifier: message["voice"] as? String ?? "")
+            unit?.synthesizeSpeechRequest(AVSpeechSynthesisProviderRequest(ssmlRepresentation: ssml, voice: voice.providerVoice))
+            reply["accepted"] = unit != nil
+        case "cancel":
+            unit?.cancelSpeechRequest()
+            reply["accepted"] = unit != nil
         case "benchmarkResult":
             Self.lock.lock()
             reply["done"] = Self.benchDone

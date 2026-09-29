@@ -97,9 +97,73 @@ final class ExtensionProcessTests: XCTestCase {
         if let provider = au as? AVSpeechSynthesisProviderAudioUnit {
             print("OK extension voices via proxy: \(provider.speechVoices.map(\.name))")
         }
+        try renderAcrossProcesses(au)
         let lines = try await ExtensionProbe.benchmarkInExtension()
         for line in lines { print("BENCH-EXT \(line)") }
         XCTAssertTrue(lines.contains { $0.contains("first audio") }, "\(lines)")
+    }
+
+    /// Request speech in the extension process, then pull the audio through
+    /// the out-of-process render block (the path the speech daemon uses).
+    private func renderAcrossProcesses(_ au: AUAudioUnit) throws {
+        let format = au.outputBusses[0].format
+        print("OK extension output format: \(format)")
+        XCTAssertEqual(format.sampleRate, 24_000)
+        au.maximumFramesToRender = 1024
+        try au.allocateRenderResources()
+        defer { au.deallocateRenderResources() }
+
+        func pull(until stop: (Double, [Float]) -> Bool, timeout: TimeInterval) -> (audio: [Float], firstAudio: TimeInterval?, complete: Bool) {
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512)!
+            var audio: [Float] = []
+            var first: TimeInterval?
+            let start = Date()
+            while Date().timeIntervalSince(start) < timeout {
+                buffer.frameLength = 512
+                var flags = AudioUnitRenderActionFlags()
+                var ts = AudioTimeStamp()
+                ts.mFlags = .sampleTimeValid
+                ts.mSampleTime = Double(audio.count)
+                let status = au.renderBlock(&flags, &ts, 512, 0, buffer.mutableAudioBufferList, nil)
+                if status != noErr {
+                    print("INFO render status \(status)")
+                    return (audio, first, false)
+                }
+                let chunk = Array(UnsafeBufferPointer(start: buffer.floatChannelData![0], count: 512))
+                if first == nil, chunk.contains(where: { $0 != 0 }) { first = Date().timeIntervalSince(start) }
+                if first != nil { audio += chunk }
+                if flags.contains(.offlineUnitRenderAction_Complete) { return (audio, first, true) }
+                if stop(Date().timeIntervalSince(start), audio) { return (audio, first, false) }
+            }
+            return (audio, first, false)
+        }
+
+        _ = try ExtensionProbe.call(au, ["cmd": "speak", "voice": "af_heart",
+                                          "ssml": "<speak>Settings, button. Double tap to open.</speak>"])
+        let spoken = pull(until: { _, _ in false }, timeout: 120)
+        print(String(format: "OK across processes: %.2f s of audio, first audio %.0f ms after the request, complete=%@, rms %.3f",
+                     TestAudio.seconds(spoken.audio), (spoken.firstAudio ?? -1) * 1000,
+                     spoken.complete ? "yes" : "no", AudioDSP.rms(spoken.audio)))
+        XCTAssertTrue(spoken.complete, "the extension never reported completion")
+        XCTAssertGreaterThan(TestAudio.seconds(spoken.audio), 1)
+        XCTAssertGreaterThan(AudioDSP.rms(spoken.audio), 0.01)
+        TestAudio.saveWAV(spoken.audio, name: "extension_process.wav")
+
+        // Cancel across processes, as VoiceOver does when you swipe on.
+        _ = try ExtensionProbe.call(au, ["cmd": "speak", "voice": "am_michael",
+                                          "ssml": "<speak>\(KokoroBenchmark.texts[2].text)</speak>"])
+        let partial = pull(until: { _, audio in audio.count > 24_000 / 2 }, timeout: 120)
+        XCTAssertNotNil(partial.firstAudio, "no audio before cancelling")
+        let c0 = Date()
+        _ = try ExtensionProbe.call(au, ["cmd": "cancel"])
+        let after = pull(until: { t, _ in t > 1 }, timeout: 2)
+        let ms = Date().timeIntervalSince(c0) * 1000
+        let leaked = after.audio.count
+        print(String(format: "OK cancel across processes: completion after %.1f ms, %d samples of audio after the cancel",
+                     ms, leaked))
+        XCTAssertTrue(after.complete, "render did not complete after cancel")
+        XCTAssertEqual(leaked, 0)
+        XCTAssertLessThan(ms, 100)
     }
 }
 

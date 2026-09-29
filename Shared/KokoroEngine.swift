@@ -31,6 +31,7 @@ public actor KokoroEngine {
     private var managerAccent: KokoroVoice.Accent?
     private var computeUnits: KokoroAneComputeUnits = .default
     private var usingFallbackUnits = false
+    private var hasSynthesized = false
 
     /// Wall time of the last model load (seconds), for the benchmark.
     public private(set) var lastLoadSeconds: Double = 0
@@ -139,7 +140,10 @@ public actor KokoroEngine {
 
     /// Run the whole pipeline once on a short phrase so the first real
     /// request doesn't pay for lexicon parsing and Core ML's first-run setup.
+    /// Does nothing once any synthesis has run, so a new audio unit instance
+    /// never makes a real request wait behind a warm-up.
     public func warmUp(voice: KokoroVoice = VoiceCatalog.defaultVoice) async {
+        guard !hasSynthesized else { return }
         do {
             _ = try await synthesize("Ready.", voice: voice)
         } catch {
@@ -153,6 +157,7 @@ public actor KokoroEngine {
         guard let manager else { throw KokoroEngineError.modelsNotFound("manager not ready") }
         let result = try await manager.synthesizeDetailed(
             text: text, voice: voice.packName, speed: speed)
+        hasSynthesized = true
         return result.samples
     }
 

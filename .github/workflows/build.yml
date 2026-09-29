@@ -36,6 +36,10 @@ jobs:
           xcodebuild -version
           grep -rn "kAudioUnitType_SpeechSynthesizer" "$SDK/System/Library/Frameworks/AudioToolbox.framework/Headers/" | head -5 || true
           H=$(find "$SDK/System/Library/Frameworks/AVFAudio.framework/Headers" -name "AVSpeechSynthesisProvider.h" | head -1)
+          echo "--- Xcode's Audio Unit extension templates (extension point and component type)"
+          DEV=$(xcode-select -p)
+          grep -rlE "com.apple.AudioUnit" "$DEV/Library/Xcode/Templates" "$DEV/Platforms/iPhoneOS.platform/Developer/Library/Xcode/Templates" 2>/dev/null | head -10 || true
+          grep -rhE -A1 "NSExtensionPointIdentifier|Speech Synthesizer|ausp" "$DEV/Library/Xcode/Templates" 2>/dev/null | grep -E "AudioUnit|ausp|Speech" | sort | uniq -c | head -20 || true
           echo "--- $H"
           grep -nE "interface|ssmlRepresentation|initWithSSML|synthesizeSpeechRequest|cancelSpeechRequest|speechVoices|updateSpeechVoices|API_AVAILABLE" "$H" | head -60 || true
 
@@ -85,13 +89,15 @@ jobs:
       - name: Test output
         if: always()
         run: |
-          grep -E "^(OK |INFO |BENCH )|error:|failed|passed|skipped|exceeded execution time|Restarting after" bench.log test.log | head -300 || true
+          grep -hE "^(OK |INFO |BENCH)|error:|failed|skipped|exceeded execution time|Restarting after" bench.log test.log | grep -v "^OK wrote" | head -400 || true
+          echo "=== Benchmark inside the extension process (simulator) ==="
+          grep -h "BENCH-EXT" test.log | sort -u || true
           sed -n '/^Failing tests:/,/^\*\*/p' test.log || true
 
       - name: Extension log (what the system sent it)
         if: always()
         run: |
-          xcrun simctl spawn "$UDID" log show --last 60m --style compact \
+          xcrun simctl spawn "$UDID" log show --last 60m --style compact --info --debug\
             --predicate 'subsystem == "com.conner.kokorovoice"' 2>/dev/null | tail -150 || true
           xcrun simctl spawn "$UDID" pluginkit -m -v 2>/dev/null | grep -i -E "kokoro|AudioUnit" | head -20 || true
 
