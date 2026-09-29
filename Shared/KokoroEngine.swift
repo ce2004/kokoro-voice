@@ -28,7 +28,7 @@ public actor KokoroEngine {
     /// Supertonic 3 outputs 44.1 kHz mono.
     public static let sampleRate = 44_100
     /// Denoising steps: the quality/latency middle ground (upstream default 8).
-    public static let steps = 5
+    public static let steps = 3
     /// Supertonic's natural speaking speed multiplier (upstream default).
     static let baseSpeed: Float = 1.05
 
@@ -36,6 +36,7 @@ public actor KokoroEngine {
     private var styles: [String: Supertonic3VoiceStyle] = [:]
     private var usingFallbackUnits = false
     private var hasSynthesized = false
+    private var phraseCache: [String: [Float]] = [:]
 
     /// Wall time of the last model load (seconds), for the benchmark.
     public private(set) var lastLoadSeconds: Double = 0
@@ -112,6 +113,12 @@ public actor KokoroEngine {
 
     /// Text -> 44.1 kHz mono float samples.
     public func synthesize(_ text: String, voice: KokoroVoice, speed: Float = 1.0) async throws -> [Float] {
+        // Short phrases ("button", "heading", app names) repeat constantly in
+        // VoiceOver: serve them from a small in-memory cache.
+        let cacheKey = "\(voice.packName)|\(speed)|\(text)"
+        if text.count <= 40, let cached = phraseCache[cacheKey] {
+            return cached
+        }
         try await prepare(accent: voice.accent)
         guard let manager else { throw KokoroEngineError.modelsNotFound("manager not ready") }
         let spoken = Self.normalize(text)
@@ -120,6 +127,10 @@ public actor KokoroEngine {
                 text: spoken, language: "en", style: try style(for: voice),
                 totalSteps: Self.steps, speed: Self.baseSpeed * speed, silenceDuration: 0.05)
             hasSynthesized = true
+            if text.count <= 40 {
+                if phraseCache.count >= 300 { phraseCache.removeAll(keepingCapacity: true) }
+                phraseCache[cacheKey] = result.samples
+            }
             return result.samples
         } catch where !usingFallbackUnits {
             // The Neural Engine path failed at run time: reload on the CPU once.

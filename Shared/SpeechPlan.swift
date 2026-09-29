@@ -257,7 +257,7 @@ public enum SpeechPlanner {
     /// Sentences longer than this (characters) are split at clause punctuation.
     static let maxChunk = 110
     /// A first sentence longer than this is split at its first clause break.
-    static let firstChunkTarget = 90
+    static let firstChunkTarget = 40
 
     public static func plan(ssml: String) -> [SpeechPiece] {
         var pieces: [SpeechPiece] = []
