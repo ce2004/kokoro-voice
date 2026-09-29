@@ -12,7 +12,7 @@ public enum MemoryStats {
             }
         }
         guard kr == KERN_SUCCESS else { return (0, 0) }
-        return (info.phys_footprint, info.ledger_phys_footprint_peak)
+        return (info.phys_footprint, UInt64(max(0, info.ledger_phys_footprint_peak)))
     }
 
     public static func mb(_ bytes: UInt64) -> Double { Double(bytes) / 1_048_576 }

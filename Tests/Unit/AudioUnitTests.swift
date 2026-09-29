@@ -15,7 +15,7 @@ final class AudioUnitTests: XCTestCase {
 
     private func request(_ ssml: String, voice: String = "af_heart") -> AVSpeechSynthesisProviderRequest {
         AVSpeechSynthesisProviderRequest(
-            ssmlRepresentation: ssml, language: "en-US",
+            ssmlRepresentation: ssml,
             voice: VoiceCatalog.voice(forIdentifier: voice).providerVoice)
     }
 

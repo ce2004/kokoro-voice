@@ -30,7 +30,8 @@ public enum AudioDSP {
         }
         let gain = Float(min(max(volume, 0), 2))
         if gain != 1 {
-            vDSP.multiply(gain, out, result: &out)
+            let unscaled = out
+            vDSP.multiply(gain, unscaled, result: &out)
         }
         softLimit(&out)
         return out
@@ -142,7 +143,8 @@ public enum AudioDSP {
             h[i] = Float(sinc) * window[i]
         }
         let sum = h.reduce(0, +)
-        vDSP.divide(h, sum, result: &h)
+        let raw = h
+        vDSP.divide(raw, sum, result: &h)
         var padded = [Float](repeating: 0, count: mid)
         padded += x
         padded += [Float](repeating: 0, count: taps - mid)
