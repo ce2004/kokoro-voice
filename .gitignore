@@ -1,0 +1,8 @@
+.model-cache/
+Extension/Models/
+build/
+*.xcodeproj/
+Payload/
+*.ipa
+.DS_Store
+samples/

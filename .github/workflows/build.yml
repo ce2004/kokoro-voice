@@ -1,0 +1,190 @@
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Model cache
+        uses: actions/cache@v4
+        with:
+          path: .model-cache
+          key: models-${{ hashFiles('scripts/models.lock', 'scripts/fetch_models.py') }}
+
+      - name: Fetch and verify models
+        run: python3 scripts/fetch_models.py
+
+      - name: Tools
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: SDK facts (extension point, component type, provider API)
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "SDK: $SDK"
+          xcodebuild -version
+          grep -rn "kAudioUnitType_SpeechSynthesizer" "$SDK/System/Library/Frameworks/AudioToolbox.framework/Headers/" | head -5 || true
+          H=$(find "$SDK/System/Library/Frameworks/AVFAudio.framework/Headers" -name "AVSpeechSynthesisProvider.h" | head -1)
+          echo "--- $H"
+          grep -nE "interface|ssmlRepresentation|initWithSSML|synthesizeSpeechRequest|cancelSpeechRequest|speechVoices|updateSpeechVoices|API_AVAILABLE" "$H" | head -60 || true
+
+      - name: Pick and boot a simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          rts = sorted([k for k in d if ".iOS-" in k], key=lambda k: [int(x) for x in k.split(".iOS-")[1].split("-")])
+          for rt in reversed(rts):
+              for dev in d[rt]:
+                  if dev["name"].startswith("iPhone 17"):
+                      print(dev["udid"]); sys.exit()
+          ')
+          echo "Simulator $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Build for testing
+        run: |
+          set -o pipefail
+          # Ad-hoc signed so the simulator will register the app extension.
+          xcodebuild build-for-testing -project KokoroVoice.xcodeproj -scheme KokoroVoice \
+            -destination "id=$UDID" -derivedDataPath build \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= | tee build.log | xcbeautify || (grep -E "error:|warning: .*Swift" build.log | head -80; exit 1)
+
+      - name: Benchmark (fresh process, so peak memory is Kokoro's)
+        run: |
+          set -o pipefail
+          mkdir -p samples
+          TEST_RUNNER_KOKORO_OUT="$PWD/samples" xcodebuild test-without-building -project KokoroVoice.xcodeproj -scheme KokoroVoice \
+            -destination "id=$UDID" -derivedDataPath build -only-testing:KokoroVoiceTests/BenchmarkTests \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 900 -maximum-test-execution-time-allowance 1200 \
+            -resultBundlePath Benchmark.xcresult 2>&1 | tee bench.log | xcbeautify
+          echo "=== Benchmark (iOS Simulator on an Apple Silicon runner; CPU only, not phone numbers) ==="
+          grep -E "BENCH " bench.log | grep -v "BENCH progress" | sed 's/.*BENCH /  /' | sort -u
+
+      - name: Test
+        run: |
+          set -o pipefail
+          TEST_RUNNER_KOKORO_OUT="$PWD/samples" xcodebuild test-without-building -project KokoroVoice.xcodeproj -scheme KokoroVoice \
+            -destination "id=$UDID" -derivedDataPath build -skip-testing:KokoroVoiceTests/BenchmarkTests \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 900 -maximum-test-execution-time-allowance 1200 \
+            -resultBundlePath TestResults.xcresult 2>&1 | tee test.log | xcbeautify
+
+      - name: Test output
+        if: always()
+        run: |
+          grep -E "^(OK |INFO |BENCH )|error:|failed|passed|skipped|exceeded execution time|Restarting after" bench.log test.log | head -300 || true
+          sed -n '/^Failing tests:/,/^\*\*/p' test.log || true
+
+      - name: Extension log (what the system sent it)
+        if: always()
+        run: |
+          xcrun simctl spawn "$UDID" log show --last 60m --style compact \
+            --predicate 'subsystem == "com.conner.kokorovoice"' 2>/dev/null | tail -150 || true
+          xcrun simctl spawn "$UDID" pluginkit -m -v 2>/dev/null | grep -i -E "kokoro|AudioUnit" | head -20 || true
+
+      - name: Failed tests from the result bundle
+        if: failure()
+        run: |
+          for b in Benchmark.xcresult TestResults.xcresult; do
+            [ -d "$b" ] || continue
+            xcrun xcresulttool get test-results summary --path "$b" > summary.json || continue
+            python3 - <<'EOF'
+          import json
+          s = json.load(open("summary.json"))
+          print("Result:", s.get("result"), "| passed", s.get("passedTests"), "failed", s.get("failedTests"), "skipped", s.get("skippedTests"))
+          for f in s.get("testFailures", []):
+              print("FAILED", f.get("testIdentifierString") or f.get("testName"), "::", f.get("failureText"))
+          EOF
+          done
+
+      - name: Upload samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kokoro-samples
+          path: samples/*.wav
+          if-no-files-found: warn
+
+      - name: Upload results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: |
+            TestResults.xcresult
+            Benchmark.xcresult
+            build.log
+            bench.log
+            test.log
+
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Model cache
+        uses: actions/cache@v4
+        with:
+          path: .model-cache
+          key: models-${{ hashFiles('scripts/models.lock', 'scripts/fetch_models.py') }}
+      - name: Fetch and verify models
+        run: python3 scripts/fetch_models.py
+      - name: Tools
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build unsigned IPA
+        run: |
+          set -o pipefail
+          xcodebuild build -project KokoroVoice.xcodeproj -scheme KokoroVoice -configuration Release \
+            -sdk iphoneos -destination generic/platform=iOS -derivedDataPath build \
+            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tee build.log | xcbeautify || (grep -E "error:" build.log | head -80; exit 1)
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/KokoroVoice.app Payload/
+          zip -qry KokoroVoice.ipa Payload
+          ls -la KokoroVoice.ipa
+      - name: Check the IPA
+        run: |
+          APP=Payload/KokoroVoice.app
+          echo "--- bundle"; find "$APP" -maxdepth 3 -not -path "*/Models/*" | sort
+          echo "--- extension Info.plist"; plutil -p "$APP/PlugIns/KokoroSynth.appex/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$APP/PlugIns/KokoroSynth.appex/Info.plist")" = "com.apple.AudioUnit"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:AudioComponents:0:type' "$APP/PlugIns/KokoroSynth.appex/Info.plist")" = "ausp"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/PlugIns/KokoroSynth.appex/Info.plist")" = "com.conner.kokorovoice.synth"
+          echo "--- models"; du -sh "$APP/PlugIns/KokoroSynth.appex/Models" "$APP/PlugIns/KokoroSynth.appex/Models"/*/* | sort -h | tail -20
+          echo "--- sizes"; du -sh "$APP" "$APP/Frameworks"/* "$APP/PlugIns"/*; ls -la KokoroVoice.ipa
+          echo "--- linkage"; otool -L "$APP/PlugIns/KokoroSynth.appex/KokoroSynth" | head
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KokoroVoice-ipa
+          path: KokoroVoice.ipa
+
+  release:
+    needs: [ipa]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: KokoroVoice-ipa
+      - name: Publish to the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create latest KokoroVoice.ipa --repo "$GITHUB_REPOSITORY" --title "Latest build (${GITHUB_RUN_NUMBER})" \
+            --notes "Build ${GITHUB_RUN_NUMBER} from ${GITHUB_SHA::7}. Install KokoroVoice.ipa with iloader." --target "$GITHUB_SHA"
