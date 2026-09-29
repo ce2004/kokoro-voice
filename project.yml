@@ -5,9 +5,10 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
 packages:
+  # FluidAudio at a pinned commit with our compact-lexicon patch applied by
+  # scripts/vendor_fluidaudio.py (run it before xcodegen).
   FluidAudio:
-    url: https://github.com/FluidInference/FluidAudio
-    revision: 20d4f0bd46d11d7f50a6eb4f7835cfdbd2b4ba14
+    path: Vendor/FluidAudio
 settings:
   base:
     SWIFT_VERSION: "5.0"

@@ -85,7 +85,7 @@ public actor KokoroEngine {
         }
         try fm.createDirectory(at: dst, withIntermediateDirectories: true)
 
-        let lexicon = accent == .british ? "gb_lexicon_cache.json" : "us_lexicon_cache.json"
+        let lexicon = accent == .british ? "gb_lexicon.tsv" : "us_lexicon.tsv"
         let links: [(String, String)] = [
             ("G2PEncoder.mlmodelc", "G2PEncoder.mlmodelc"),
             ("G2PDecoder.mlmodelc", "G2PDecoder.mlmodelc"),

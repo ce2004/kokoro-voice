@@ -23,6 +23,9 @@ jobs:
       - name: Fetch and verify models
         run: python3 scripts/fetch_models.py
 
+      - name: Vendor FluidAudio (pinned, patched)
+        run: python3 scripts/vendor_fluidaudio.py
+
       - name: Tools
         run: brew install xcodegen
 
@@ -148,6 +151,9 @@ jobs:
           key: models-${{ hashFiles('scripts/models.lock', 'scripts/fetch_models.py') }}
       - name: Fetch and verify models
         run: python3 scripts/fetch_models.py
+      - name: Vendor FluidAudio (pinned, patched)
+        run: python3 scripts/vendor_fluidaudio.py
+
       - name: Tools
         run: brew install xcodegen
       - name: Generate project

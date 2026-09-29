@@ -8,7 +8,7 @@ and build the derived files (British lexicon, voice packs).
 Layout produced (what KokoroEngine expects):
     Extension/Models/kokoro-82m-coreml/ANE/   7 .mlmodelc stages, vocab.json, <voice>.bin
     Extension/Models/kokoro/                  G2P encoder/decoder, g2p_vocab.json,
-                                              us_lexicon_cache.json, gb_lexicon_cache.json
+                                              us_lexicon.tsv, gb_lexicon.tsv (compact lexicons)
 """
 import hashlib
 import json
@@ -84,7 +84,7 @@ def place(rel, src):
     """Copy a verified cache file to its place under Extension/Models."""
     if rel.startswith("ANE/"):
         dst = os.path.join(OUT, "kokoro-82m-coreml", rel)
-    elif rel.startswith("voices/") or rel.startswith("gb_"):
+    elif rel.startswith("voices/") or rel.startswith("gb_") or rel == "us_lexicon_cache.json":
         return
     else:
         dst = os.path.join(OUT, "kokoro", rel)
@@ -144,11 +144,14 @@ def main():
         raise SystemExit("voice conversion does not reproduce af_heart.bin")
     print(f"converted {len(VOICES)} voice packs (af_heart matches the published .bin)")
 
+    # Lexicons as compact TSV (loaded by the patched FluidAudio; see patches/).
     kokoro = os.path.join(OUT, "kokoro")
-    subprocess.check_call([sys.executable, os.path.join(ROOT, "scripts", "build_lexicon.py"),
-                           os.path.join(CACHE, "gb_gold.json"), os.path.join(CACHE, "gb_silver.json"),
-                           os.path.join(CACHE, "ANE", "vocab.json"),
-                           os.path.join(kokoro, "gb_lexicon_cache.json")])
+    vocab = os.path.join(CACHE, "ANE", "vocab.json")
+    build = [sys.executable, os.path.join(ROOT, "scripts", "build_lexicon.py")]
+    subprocess.check_call(build + ["--from-cache", os.path.join(CACHE, "us_lexicon_cache.json"), vocab,
+                                   os.path.join(kokoro, "us_lexicon.tsv")])
+    subprocess.check_call(build + [os.path.join(CACHE, "gb_gold.json"), os.path.join(CACHE, "gb_silver.json"),
+                                   vocab, os.path.join(kokoro, "gb_lexicon.tsv")])
 
     total = 0
     for dirpath, _, names in os.walk(OUT):

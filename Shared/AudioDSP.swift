@@ -7,10 +7,13 @@ public enum AudioDSP {
     /// requests use Kokoro at this speed and WSOLA for the rest.
     public static let maxModelSpeed: Double = 1.6
     public static let minModelSpeed: Double = 0.6
+    /// Beyond this WSOLA has to skip so much that speech stops being words.
+    public static let maxRate: Double = 6.0
 
     /// Split a requested speaking-rate multiplier into Kokoro's speed and the
     /// remaining tempo change done by WSOLA.
-    public static func split(rate: Double) -> (modelSpeed: Double, stretch: Double) {
+    public static func split(rate requested: Double) -> (modelSpeed: Double, stretch: Double) {
+        let rate = min(max(requested, 0.3), maxRate)
         let model = min(max(rate, minModelSpeed), maxModelSpeed)
         return (model, rate / model)
     }

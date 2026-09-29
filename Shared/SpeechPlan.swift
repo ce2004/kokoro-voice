@@ -255,7 +255,7 @@ public enum SpeechText {
 /// order. The first piece is kept short so first-audio latency stays low.
 public enum SpeechPlanner {
     /// Sentences longer than this (characters) are split at clause punctuation.
-    static let maxChunk = 220
+    static let maxChunk = 160
     /// A first sentence longer than this is split at its first clause break.
     static let firstChunkTarget = 90
 

@@ -6,3 +6,4 @@ Payload/
 *.ipa
 .DS_Store
 samples/
+Vendor/
